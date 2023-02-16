@@ -3,7 +3,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage{regexmath}
 \usepackage{etoolbox}
-\usepackage[skins,listings,xparse]{tcolorbox}
+\usepackage[skins,listings,xparse,minted]{tcolorbox}
 \usepackage{microtype}
 \usepackage{hyperref}
 
@@ -15,6 +15,7 @@
 \date{\filedate}
 
 
+\def\MyPygLexer{simple_lexer.py:SimpleLexer -x}
 
 \newcounter{example}
 
@@ -36,46 +37,59 @@
             }%
         }}
     },
+    center,
     colback=white,
     colframe=black,
     fonttitle=\color{black},
     boxed title style={sharp corners, boxrule=0.6pt, colback=white, bottomrule=0pt},
-    listing options={
-        basicstyle={\ttfamily\scriptsize},
-        xleftmargin=0pt,
-        xrightmargin=0pt,
-        framesep=0pt,
-        aboveskip=0pt,
-        belowskip=0pt,
-        framexbottommargin=0pt,
-        breaklines=true,
-        breakatwhitespace=false
+    listing engine=minted,
+    minted language=\MyPygLexer,
+    minted options={
+        autogobble,
+        obeytabs,
+        fontsize=\scriptsize,
+        mathescape,
+        breaklines
     }
 }
 
 
-\DeclareTCBListing{lstbox}{}{
-    listing only,
-    enhanced,
-    sharp corners,
-    boxrule=0.6pt,
-    colback=white,
-    colframe=black,
-    left=-2em,
-    center,
-    width=0.9\linewidth,
-    listing options={
-        basicstyle={\ttfamily\scriptsize},
-        xleftmargin=0pt,
-        xrightmargin=0pt,
-        framesep=0pt,
-        aboveskip=0pt,
-        belowskip=0pt,
-        framexbottommargin=0pt,
-        breaklines=true,
-        breakatwhitespace=false
+\tcbset{
+    lstbox-style/.style={
+        listing only,
+        enhanced,
+        sharp corners,
+        boxrule=0.6pt,
+        colback=white,
+        colframe=black,
+        %left=-2em,
+        center,
+        width=0.9\linewidth,
+        listing engine=minted,
+        minted language=\MyPygLexer,
+        minted options={
+            autogobble,
+            obeytabs,
+            fontsize=\scriptsize,
+            breaklines
+        }
     }
 }
+
+\newtcblisting{lstbox}{
+    lstbox-style
+}
+
+\newtcbinputlisting{\inputlstbox}[1]{
+    lstbox-style,
+    listing file={#1}
+}
+
+\newcommand{\regex}{{\scshape RegEx}}
+\newcommand{\excommentref}[1]{
+    \mbox{\ttfamily\itshape Example~\ref{#1}}
+}
+
 
 \begin{document}
     
@@ -85,28 +99,95 @@
 
     \section{Examples}
 
-    \begin{lstbox}
-        This
-    \end{lstbox}
     
-    \begin{filecontents}{example-bootstrap.vrb}
-        \ReMConfigNew{default}
-        \ReMConfigSetCurrent{default}
-    \end{filecontents}
+\begin{filecontents*}{example-bootstrap.vrb}
+    \ReMConfigNew{default}
+    \ReMConfigSetCurrent{default}
+\end{filecontents*}
 
-    % \edef\ExBootStrapBox{
-    %     \noexpand\begin{}
-    % }
+    % execute the example bootstrap code
+    \input{example-bootstrap.vrb}
+    % show the example bootstrap code
+    \inputlstbox{example-bootstrap.vrb}
 
-    % \begin{exbox}[][Title ]
-    %     \ReMConfigDisable % disable old config
-    %     \ReMConfigClear % clear old 
-    %     This is a test environment.
-    % \end{exbox}
+
+\begin{exbox}[ex:bold-vec-sym-inline][Embolden vector symbols in inline equations]
+    \ReMDisable % disable regexmath for config change
+    \ReMConfigClearRe % clear regex in current config
+
+    % suppose in our notation system, letters A, x, b, c represent vectors 
+    %   while others are scalars
+    \ReMConfigAddRe{([Axbc])}{\c{boldsymbol}{\1}}
+    % in replacement text, \c{} constructs a command with given name; 
+    %   \1 stands for the first capture group
+    
+    \ReMEnable % enable regexmath
+
+    We have a linear system $Ax=b$ and another scalar equation $Cy=d$.
+    Suppose $ux+vb=c$.
+\end{exbox}
+
+\begin{exbox}[ex:bold-vec-sym-disp][Embolden vector symbols in display equations]
+    \ReMDisable % disable regexmath for config change
+    \ReMConfigClearRe % clear regex in current config
+
+    % add the set of display environments where regexmath should be enabled
+    \ReMConfigAddDispEnvs{align*,gather*} % only add two unnumbered envs
+
+    % using the same setup as $\excommentref{ex:bold-vec-sym-inline}$
+    \ReMConfigAddRe{([Axbc])}{\c{boldsymbol}{\1}}
+    
+    \ReMEnable % enable regexmath
+
+    This is a linear system
+    \begin{align*}
+        Ax + sc &= \lambda b,\\
+        c &= kb.
+    \end{align*}
+    This is the same linear system
+    \begin{gather*}
+        Ax + sc = \lambda b,\\
+        c = kb.
+    \end{gather*}
+    % numbered environments are unchanged
+    Below is just some equations
+    \begin{align}
+        Ax + sc &= \lambda b,\\
+        c &= kb.
+    \end{align}
+    The same set of equations
+    \begin{gather}
+        Ax + sc = \lambda b,\\
+        c = kb.
+    \end{gather}
+\end{exbox}
 
     % \begin{exbox}[][Title one more]
     %     This is a test environment.
     % \end{exbox}
+
+\begin{exbox}[ex:simple-mat][Simplified matrices]
+    \ReMDisable % disable regexmath for config change
+    \ReMConfigClearRe % clear regex in current config
+
+    % define simplified vector notations
+    \ReMConfigAddRe{\[\[}{\c{begin}{bmatrix}}
+    \ReMConfigAddRe{\]\]}{\c{end}{bmatrix}}
+    \ReMConfigAddRe{\|\(}{\c{begin}{vmatrix}}
+    \ReMConfigAddRe{\|\)}{\c{end}{vmatrix}}
+    % embolden all letters
+    \ReMConfigAddRe{([A-Za-z])}{\c{boldsymbol}{\1}}
+
+    \ReMEnable % enable regexmath
+
+    % we have added two display environments (align*,gather*) to the config in $\excommentref{ex:bold-vec-sym-disp}$
+    \begin{align*}
+        |( 
+            [[C \\ I]] & \mathbf{0}\\
+            \mathbf{0} & [[ I \\ [B+(Ax+c)] ]]
+        |)
+    \end{align*}
+\end{exbox}
 
 
 
