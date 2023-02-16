@@ -1,0 +1,94 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage[T1]{fontenc}
+\usepackage{regexmath}
+\usepackage{datetime2}
+\usepackage{bm}
+
+\errorcontextlines100
+
+\begin{document}
+
+
+\section{Inline math}
+
+\ReMConfigNew{default}
+\ReMConfigSetCurrent{default}
+\ReMConfigAddRe{([a-z])->([a-z])}{\1 \c{rightarrow} \2}
+\ReMConfigAddRe{a}{\c{bm}{a}}
+\ReMConfigShow
+\ReMEnable
+\ReMEnable
+
+\par$aa->b$
+\par$a->2$
+
+\begin{align*}
+    &aa->b\\
+    a->2&b
+\end{align*}
+
+\begin{gather}
+    aa->b\\
+    a->2b
+\end{gather}
+
+\ReMDisable
+\ReMDisable
+
+\begin{align*}
+    &aa->b\\
+    a->2&b
+\end{align*}
+
+\begin{gather}
+    aa->b\\
+    a->2b
+\end{gather}
+
+
+\section{Display math}
+
+\ReMConfigNew{default2}
+\ReMConfigSetCurrent{default2}
+\ReMConfigCopyFrom{default}
+\ReMConfigAddDispEnvs{align*,gather*,gather}
+\ReMConfigAddRe{\[\[}{\c{begin}{bmatrix}}
+\ReMConfigAddRe{]]}{\c{end}{bmatrix}}
+\ReMConfigShow
+
+\ReMEnable
+
+\par$aa->b$
+\par$a->2$
+
+\begin{align*}
+    &aa->b\\
+    a->2&b
+\end{align*}
+
+\begin{gather}
+    aa->b\\
+    a->2b
+\end{gather}
+
+
+\begin{align*}
+    [[ a & b \\ c & d ]]
+\end{align*}
+
+
+\ReMDisable
+
+\begin{align*}
+    &aa->b\\
+    a->2&b
+\end{align*}
+
+\begin{gather}
+    aa->b\\
+    a->2b
+\end{gather}
+
+
+\end{document}

@@ -1,0 +1,114 @@
+\documentclass{ltxdoc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{regexmath}
+\usepackage{etoolbox}
+\usepackage[skins,listings,xparse]{tcolorbox}
+\usepackage{microtype}
+\usepackage{hyperref}
+
+
+\GetFileInfo{regexmath.sty}
+
+\title{The \texttt{regexmath} Package}
+\author{Ziyue ``Alan'' Xiang}
+\date{\filedate}
+
+
+
+\newcounter{example}
+
+% stared: listing only
+% optional args1: label of this example
+% optional args2: name of this example
+\DeclareTCBListing{exbox}{soo}{
+    IfBooleanTF={#1}{listing only}{},
+    enhanced,
+    sharp corners,
+    boxrule=0.6pt,
+    attach boxed title to top left,
+    title={
+        Example~\refstepcounter{example}\theexample%
+        \IfValueT{#2}{\ifblank{#2}{}{\label{#2}}}%
+        \IfValueT{#3}{\ifblank{#3}{}{:\space #3%
+            \addcontentsline{toc}{subsection}{%
+                \protect\numberline{\theexample} #3%
+            }%
+        }}
+    },
+    colback=white,
+    colframe=black,
+    fonttitle=\color{black},
+    boxed title style={sharp corners, boxrule=0.6pt, colback=white, bottomrule=0pt},
+    listing options={
+        basicstyle={\ttfamily\scriptsize},
+        xleftmargin=0pt,
+        xrightmargin=0pt,
+        framesep=0pt,
+        aboveskip=0pt,
+        belowskip=0pt,
+        framexbottommargin=0pt,
+        breaklines=true,
+        breakatwhitespace=false
+    }
+}
+
+
+\DeclareTCBListing{lstbox}{}{
+    listing only,
+    enhanced,
+    sharp corners,
+    boxrule=0.6pt,
+    colback=white,
+    colframe=black,
+    left=-2em,
+    center,
+    width=0.9\linewidth,
+    listing options={
+        basicstyle={\ttfamily\scriptsize},
+        xleftmargin=0pt,
+        xrightmargin=0pt,
+        framesep=0pt,
+        aboveskip=0pt,
+        belowskip=0pt,
+        framexbottommargin=0pt,
+        breaklines=true,
+        breakatwhitespace=false
+    }
+}
+
+\begin{document}
+    
+    \maketitle
+
+    \tableofcontents
+
+    \section{Examples}
+
+    \begin{lstbox}
+        This
+    \end{lstbox}
+    
+    \begin{filecontents}{example-bootstrap.vrb}
+        \ReMConfigNew{default}
+        \ReMConfigSetCurrent{default}
+    \end{filecontents}
+
+    % \edef\ExBootStrapBox{
+    %     \noexpand\begin{}
+    % }
+
+    % \begin{exbox}[][Title ]
+    %     \ReMConfigDisable % disable old config
+    %     \ReMConfigClear % clear old 
+    %     This is a test environment.
+    % \end{exbox}
+
+    % \begin{exbox}[][Title one more]
+    %     This is a test environment.
+    % \end{exbox}
+
+
+
+
+\end{document}

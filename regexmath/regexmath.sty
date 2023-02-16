@@ -1,0 +1,552 @@
+\RequirePackage{expl3}
+\ProvidesExplPackage{@@}{2023/02/21}{0.0.1}{simpler~math~equation~using~regex}
+\RequirePackage{etoolbox}
+\RequirePackage{xparse}
+
+%%GLOBAL_DEF%%
+
+%%%%%%%%%%% error messages
+
+\msg_new:nnn {@@} {unknown-config} {config~"#1"~is~unknown}
+\msg_new:nnn {@@} {existing-config} {config~"#1"~already~exists}
+\msg_new:nnn {@@} {empty-match} {in~config~"#1",~regex~\##2:~empty~match~is~not~allowed}
+\msg_new:nnn {@@} {invalid-backend} {backend~"#1"~is~invalid}
+\msg_new:nnn {@@} {already-enabled} {@@~is~already~enabled}
+\msg_new:nnn {@@} {already-disabled} {@@~is~already~disabled}
+
+%%%%%%%%%%%
+
+
+
+% the current regexmath config name
+\g:tl \:current_config
+% if a config has been activated
+\g:bool \:is_config_activated
+
+% the properties of a specific config
+\g:clist \:config_properties
+\clist_gset:Nn \:config_properties {
+    display_envs,
+    inline,
+    num_regex,
+    inline_backend,
+    display_backend
+}
+
+
+% check if config name exists
+\cs_new_protected:Npn \@@__check_config_exists:n #config_name {
+    \cs_if_exist:cF {g__@@_config_#config_name _inline_tl} {
+        \msg_error:nnn {@@} {unknown-config} {#config_name}
+    }
+}
+
+% regex cs names
+\cs_new_protected:Npn \@@__config_regex_pattern_csname:nn #config_name#index {
+    g__@@_config_regex_of_#config_name _ #index _regex
+}
+
+\cs_new_protected:Npn \@@__config_sub_pattern_csname:nn #config_name#index {
+    g__@@_config_sub_of_#config_name _ #index _tl
+}
+
+% declare getter/setters for config properties
+\cs_new_protected:Npn \@@__declare_config_methods: {
+    \:tl \:config_prop
+    \clist_map_variable:NNn \:config_properties \:config_prop {
+        \cs_new:cpx {@@_config_csname_\:config_prop :nN} ##config_name##out_cs {
+            \exp_not:N \@@__check_config_exists:n {##config_name}
+            \exp_not:N \tl_set:Nn ##out_cs {g__@@_config_##config_name _\:config_prop _tl}
+        }
+        \cs_generate_variant:cn {@@_config_csname_\:config_prop :nN} {nc, VN, Vc}
+        
+        \cs_new:cpx {@@_config_get_\:config_prop :nN} ##config_name##out_cs {
+            \exp_not:N \@@__check_config_exists:n {##config_name}
+            \exp_not:N \tl_gset_eq:Nc ##out_cs {g__@@_config_##config_name _\:config_prop _tl}
+        }
+        \cs_generate_variant:cn {@@_config_get_\:config_prop :nN} {nc, VN, Vc}
+
+        \cs_new:cpx {@@_config_gset_\:config_prop :nn} ##config_name##value {
+            \exp_not:N \@@__check_config_exists:n {##config_name}
+            \exp_not:N \tl_gset:cn {g__@@_config_##config_name _\:config_prop _tl} {##value}
+        }
+
+        \cs_generate_variant:cn {@@_config_gset_\:config_prop :nn} {nx,Vn,Vx,VV}
+    }
+}
+
+\@@__declare_config_methods:
+
+% create a new config
+\cs_new_protected:Npn \@@@@ConfigNew #config_name {
+    \cs_if_exist:cT {g__@@_config_#config_name _inline_tl} {
+        \msg_error:nnn {@@} {existing-config} {#config_name}
+    }
+    \clist_map_inline:Nn \:config_properties {
+        \tl_new:c {g__@@_config_#config_name _##1_tl}
+    }
+    % fill in default values
+    \@@_config_gset_inline:nn {#config_name} {\c_true_bool}
+    \@@_config_gset_num_regex:nn {#config_name} {0}
+    \@@_config_gset_inline_backend:nn {#config_name} {tl}
+    \@@_config_gset_display_backend:nn {#config_name} {file}
+}
+
+
+\cs_new_protected:Npn \@@@@ConfigSetCurrent #config_name {
+    \@@__check_config_exists:n {#config_name}
+    \tl_gset:Nn \:current_config {#config_name}
+}
+
+% add display environment to config
+\cs_new_protected:Npn \@@@@ConfigAddDispEnvs #display_envs {
+    \:tl \:prop_cs
+    \@@_config_csname_display_envs:VN \:current_config \:prop_cs
+    \clist_map_inline:nn {#display_envs}{
+        \clist_gput_right:cn {\:prop_cs} {##1}
+    }
+}
+
+\cs_new_protected:Npn \@@@@ConfigSetDispEnvs #display_envs {
+    \:tl \:prop_cs
+    \@@_config_csname_display_envs:VN \:current_config \:prop_cs
+    \clist_gset:cn {\:prop_cs} {#display_envs}
+}
+
+
+\cs_new_protected:Npn \@@@@ConfigEnableInline #display_envs {
+    \@@_config_gset_inline:Vn \:current_config {\c_true_bool}
+}
+
+
+\cs_new_protected:Npn \@@@@ConfigDisableInline #display_envs {
+    \@@_config_gset_inline:Vn \:current_config {\c_false_bool}
+}
+
+\cs_generate_variant:Nn \regex_show:N {c}
+
+\cs_new_protected:Npn \@@@@ConfigShow {
+    \exp_args:NV \@@__check_config_exists:n \:current_config
+
+    \:tl \:val
+
+    \iow_term:n {=====================================================}
+    \iow_term:x {information~about~@@~config~"\:current_config"}
+    \clist_map_inline:Nn \:config_properties {
+        \use:c {@@_config_get_##1:nN} \:current_config \:val
+        \iow_term:x {{##1}~=~{\:val}}
+    }
+    \iow_term:n {------------------------REGEX------------------------}
+    \:tl \:num_regex
+    \:tl \:regex_csname
+    \@@_config_get_num_regex:VN \:current_config \:num_regex
+    \int_step_inline:nn {\:num_regex} {
+        \iow_term:n {REGEX \###1:}
+        \tl_set:Nx \:regex_csname {
+            \@@__config_regex_pattern_csname:nn {\:current_config} {##1}
+        }
+        \regex_show:c {\:regex_csname}
+    }
+    \iow_term:n {=====================================================}
+}
+
+% check if a backend is valid
+\cs_new_protected:Npn \@@__check_backend:n #backend {
+    \str_case:nnF {#backend} {
+        {tl} {}
+        {file} {}
+    } {
+        \msg_error:nnn {@@} {invalid-backend} {#backend}
+    }
+}
+
+\cs_new_protected:Npn \@@@@ConfigSetInlineBackend #backend {
+    \@@__check_backend:n {#backend}
+    \@@_config_gset_inline_backend:Vn \:current_config {#backend}
+}
+
+\cs_new_protected:Npn \@@@@ConfigSetDisplayBackend #backend {
+    \@@__check_backend:n {#backend}
+    \@@_config_gset_display_backend:Vn \:current_config {#backend}
+}
+
+
+\cs_generate_variant:Nn \regex_new:N {c}
+\cs_generate_variant:Nn \regex_gset:Nn {cn}
+
+% add regular expression to the config
+\cs_new_protected:Npn \@@@@ConfigAddRe #pattern#sub {
+    % get number of regex for the current config
+    \:tl \:num_regex
+    \@@_config_get_num_regex:VN \:current_config \:num_regex
+    
+    % % increment the regex number to get the index for current regex
+    \tl_set:Nx \:num_regex {\int_eval:n {\:num_regex + 1}}
+
+    % declare and set re pattern
+    \regex_new:c {\@@__config_regex_pattern_csname:nn {\:current_config} {\:num_regex}}
+    % prepend "start of sentence" pattern 
+    \regex_gset:cn {\@@__config_regex_pattern_csname:nn {\:current_config} {\:num_regex}} {\A#pattern} 
+
+    % declare and set substition text
+    \tl_new:c {\@@__config_sub_pattern_csname:nn {\:current_config} {\:num_regex}}
+    \tl_gset:cn {\@@__config_sub_pattern_csname:nn {\:current_config} {\:num_regex}} {#sub}
+
+    % increment regex count
+    \@@_config_gset_num_regex:Vx \:current_config {\:num_regex}
+}
+
+% clear all regular expressions for the current config
+\cs_new_protected:Npn \@@@@ConfigClearRe {
+    % get number of regex for the current config
+    \:tl \:num_regex
+    \@@_config_get_num_regex:VN \:current_config \:num_regex
+    
+    \int_step_inline:nn {\:num_regex} {
+        % clear patterns
+        \exp_args:Nc \cs_undefine:N {\@@__config_regex_pattern_csname:nn {\:current_config} {##1}}
+        % clear sub
+        \exp_args:Nc \cs_undefine:N {\@@__config_sub_pattern_csname:nn {\:current_config} {##1}}
+    }
+
+    % reset regex count
+    \@@_config_gset_num_regex:Vx \:current_config {0}
+}
+
+
+% copy another config
+\cs_new_protected:Npn \@@@@ConfigCopyFrom #config_name {
+    \:tl \:val
+    \clist_map_inline:Nn \:config_properties {
+        \use:c {@@_config_get_##1:nN} {#config_name} \:val
+        \use:c {@@_config_gset_##1:VV} \:current_config \:val
+    }
+
+    \:tl \:num_regex
+    \@@_config_get_num_regex:nN {#config_name} \:num_regex
+
+
+    \int_step_inline:nn {\:num_regex} {
+        \cs_gset_eq:cc {\@@__config_regex_pattern_csname:nn {\:current_config} {##1}} {\@@__config_regex_pattern_csname:nn {#config_name} {##1}}
+        \cs_gset_eq:cc {\@@__config_sub_pattern_csname:nn {\:current_config} {##1}} {\@@__config_sub_pattern_csname:nn {#config_name} {##1}}
+    }
+}
+
+
+\cs_generate_variant:Nn \regex_extract_once:NnNT {cVNT}
+\cs_generate_variant:Nn \regex_replace_once:NnN {cVN,cnN}
+
+
+\cs_new_protected:Npn \@@__apply_regex_replace_one_line:nnN #config_name#line#output_callback {
+    \group_begin:
+
+    \:tl \:line
+    \tl_set:Nn \:line {#line}
+
+    \:tl \:num_regex
+    \@@_config_get_num_regex:nN {#config_name} \:num_regex
+
+    \:tl \:regex_csname
+    \:tl \:sub_csname
+    \:tl \:sub_content
+
+    \:tl \:regex_ind
+    \:tl \:extracted_tl
+    \:str \:extracted_text
+    \:int \:longest_match_ind
+    \:int \:longest_match_length
+    \:tl \:longest_match_tl
+    \:seq \:extract_result
+    \:tl \:sub_result
+    
+
+    \bool_until_do:nn {\tl_if_empty_p:N \:line} {
+        %\tl_show:N \:line
+        \exp_args:NV \tl_if_head_is_space:nTF \:line {
+            #output_callback {~}
+            \tl_set:Nx \:line {\exp_args:NV \tl_trim_spaces:n \:line}
+        } {
+            \exp_args:NV \tl_if_head_is_group:nTF \:line {
+                % if there is a group in the tl, we need to apply recursively
+                \exp_args:Nx #output_callback {\c_left_brace_str}
+                \@@__apply_regex_replace_one_line:nxN {#config_name} {\tl_head:N \:line} #output_callback
+                \exp_args:Nx #output_callback {\c_right_brace_str}
+    
+                \tl_set:Nx \:line {\tl_tail:N \:line}
+            } {
+                \int_set:Nn \:longest_match_ind {0}
+                \int_set:Nn \:longest_match_length {0}
+        
+                % loop every single regex for this config
+                \int_step_variable:nNn {\:num_regex} \:regex_ind {
+                    \tl_set:Nx \:regex_csname {
+                        \@@__config_regex_pattern_csname:nn {#config_name} {\:regex_ind}
+                    }
+                    
+                    \regex_extract_once:cVNT {\:regex_csname} \:line \:extract_result {
+                        % if extracted something, inspect the length of the match
+                        \seq_pop_left:NN \:extract_result \:extracted_tl
+    
+                        \str_set:NV \:extracted_text \:extracted_tl
+        
+                        \str_if_empty:NTF \:extracted_text {
+                            \msg_error:nnnn {@@} {empty-match} {#config_name} {\:regex_ind}
+                        }
+        
+                        \int_compare:nNnT {\str_count:N \:extracted_text} > \:longest_match_length {
+                            % a longer match has been found
+                            \int_set:Nn \:longest_match_length {\str_count:N \:extracted_text}
+                            \int_set:Nn \:longest_match_ind {\:regex_ind}
+                            \tl_set_eq:NN \:longest_match_tl \:extracted_tl
+                        }
+                    }
+                }
+        
+                % see if we have found a match
+                \int_compare:nNnTF \:longest_match_ind = {0} {
+                    % no match
+                    \exp_args:Nx #output_callback {\tl_head:V \:line}
+                    \tl_set:Nx \:line {\tl_tail:N \:line}
+                } {
+                    % found a match
+                    \tl_set:Nx \:regex_csname {
+                        \@@__config_regex_pattern_csname:nn {#config_name} {\int_use:N \:longest_match_ind}
+                    }
+    
+                    \tl_set:Nx \:sub_csname {
+                        \@@__config_sub_pattern_csname:nn {#config_name} {\int_use:N \:longest_match_ind}
+                    }
+                    \tl_set_eq:Nc \:sub_content {\:sub_csname}
+    
+                    %\iow_term:x {sub~content=\cs_meaning:N\:sub_content ,~longest~match=\cs_meaning:N\:longest_match_tl}
+    
+                    % perform substitution
+                    \regex_replace_once:cVN {\:regex_csname} \:sub_content \:longest_match_tl
+    
+                    \exp_args:NV #output_callback \:longest_match_tl
+    
+                    % generate the remaining line
+                    \regex_replace_once:cnN {\:regex_csname} {} \:line
+                }
+            }
+        }
+    }
+
+    \group_end:
+}
+
+\cs_generate_variant:Nn \@@__apply_regex_replace_one_line:nnN {nxN}
+
+
+\g:tl \:backend_tl_buffer
+
+\cs_new_protected:Npn \@@__backend_tl_init:  {
+    \tl_gclear:N \:backend_tl_buffer
+}
+
+\cs_new_protected:Npn \@@__backend_tl_write:n #data {
+    \tl_gput_right:Nn \:backend_tl_buffer {#data}
+}
+
+\cs_new_protected:Npn \@@__backend_tl_flush_line: {
+    \tl_gput_right:Nn \:backend_tl_buffer {\^^M}
+}
+
+\cs_new_protected:Npn \@@__backend_tl_use:  {
+    \exp_args:NnV \tl_rescan:nn {\cctab_select:N \c_document_cctab} \:backend_tl_buffer
+}
+
+
+\g:tl \:backend_file_buffer
+
+\g:iow \:backend_file_handle
+
+\cs_new_protected:Npn \@@__backend_file_init:  {
+    \tl_gclear:N \:backend_file_buffer
+    \iow_open:Nn \:backend_file_handle {\jobname-@@@@.vrb}
+}
+
+\cs_new_protected:Npn \@@__backend_file_write:n #data {
+    \tl_gput_right:Nn \:backend_file_buffer {#data}
+}
+
+\cs_new_protected:Npn \@@__backend_file_flush_line: {
+    \exp_args:NNV \iow_now:Nn \:backend_file_handle \:backend_file_buffer
+    \tl_gclear:N \:backend_file_buffer
+}
+
+\cs_new_protected:Npn \@@__backend_file_use: {
+    \tl_if_empty:NF \:backend_file_buffer {
+        \@@__backend_file_flush_line:
+    }
+    \iow_close:N \:backend_file_handle
+    \input{\jobname-@@@@.vrb}
+}
+
+% modify a display math environment so that @@ is deployed in it (do not support nested display env!)
+\cs_new_protected:Npn \@@__modify_display_math:n #display_env {
+    \:tl \:display_backend 
+    \@@_config_get_display_backend:VN \:current_config \:display_backend
+    
+    \:tl \:backend_init 
+    \:tl \:backend_write
+    \:tl \:backend_use
+    \:tl \:backend_flush_line
+
+    \tl_set:Nx \:backend_init {@@__backend_\:display_backend _init:}
+    \tl_set:Nx \:backend_write {@@__backend_\:display_backend _write:n}
+    \tl_set:Nx \:backend_use {@@__backend_\:display_backend _use:}
+    \tl_set:Nx \:backend_flush_line {@@__backend_\:display_backend _flush_line:}
+
+    % save old math env
+    \tl_new:c {g_@@_display_env_old_begin_#display_env _tl} 
+    \cs_gset_eq:cc {g_@@_display_env_old_begin_#display_env _tl} {#display_env}
+    \tl_new:c {g_@@_display_env_old_end_#display_env _tl} 
+    \cs_gset_eq:cc {g_@@_display_env_old_end_#display_env _tl} {end#display_env}
+
+    % declare new math env
+    \@@__declare_display_math_env:ncccc {#display_env} {\:backend_init} {\:backend_write} {\:backend_use} {\:backend_flush_line}
+
+    % save new math env
+    \tl_new:c {g_@@_display_env_new_begin_#display_env _tl} 
+    \cs_gset_eq:cc {g_@@_display_env_new_begin_#display_env _tl} {#display_env}
+    \tl_new:c {g_@@_display_env_new_end_#display_env _tl} 
+    \cs_gset_eq:cc {g_@@_display_env_new_end_#display_env _tl} {end#display_env}
+}
+
+\cs_new_protected:Npn \@@__restore_display_math:n #display_env {
+    \cs_gset_eq:cc {#display_env} {g_@@_display_env_old_begin_#display_env _tl}
+    \cs_gset_eq:cc {end#display_env} {g_@@_display_env_old_end_#display_env _tl}
+    \exp_args:Nc \cs_undefine:N {g_@@_display_env_old_begin_#display_env _tl}
+    \exp_args:Nc \cs_undefine:N {g_@@_display_env_old_end_#display_env _tl}
+    \exp_args:Nc \cs_undefine:N {g_@@_display_env_new_begin_#display_env _tl}
+    \exp_args:Nc \cs_undefine:N {g_@@_display_env_new_end_#display_env _tl}
+}
+
+
+\cs_new_protected:Npn \@@__declare_display_math_env:nNNNN #display_env#backend_init#backend_write#backend_use#backend_flush_line {
+    \:seq \:lines
+    \:tl \:line
+
+    \DeclareDocumentEnvironment{#display_env}{+b}{}{
+        \group_begin:
+  
+
+        \regex_split:nnN {\^^M} {##1} \:lines % TODO: actually break into lines
+
+        \def\@@@@InternalUseOldEnv{
+            \cs_gset_eq:cc {#display_env} {g_@@_display_env_old_begin_#display_env _tl}
+            \cs_gset_eq:cc {end#display_env} {g_@@_display_env_old_end_#display_env _tl}
+        }
+        \def\@@@@InternalUseNewEnv{
+            \cs_gset_eq:cc {#display_env} {g_@@_display_env_new_begin_#display_env _tl}
+            \cs_gset_eq:cc {end#display_env} {g_@@_display_env_new_end_#display_env _tl}
+        }
+
+
+        #backend_init
+        #backend_write {\@@@@InternalUseOldEnv}
+        #backend_flush_line
+        \exp_args:Nx #backend_write {\c_backslash_str begin{#display_env}}
+        #backend_flush_line
+        \seq_map_variable:NNn \:lines \:line {
+            \exp_args:NVV \@@__apply_regex_replace_one_line:nnN \:current_config \:line #backend_write
+            #backend_flush_line
+        }
+        \exp_args:Nx #backend_write {\c_backslash_str end{#display_env}}
+        #backend_write {\@@@@InternalUseNewEnv}
+        #backend_use
+        \group_end:
+    }
+}
+
+\cs_generate_variant:Nn \@@__declare_display_math_env:nNNNN {ncccc}
+
+
+\let\@@@@InternalSafeMathToggle\c_math_toggle_token
+
+\group_begin:
+\catcode`$=\active
+% modify inline math so that @@ is deployed in it
+\cs_new_protected:Npn \@@__modify_inline_math: {
+    \:tl \:inline_backend 
+    \@@_config_get_inline_backend:VN \:current_config \:inline_backend
+
+    \:tl \:backend_init 
+    \:tl \:backend_write
+    \:tl \:backend_use
+    
+    \tl_set:Nx \:backend_init {@@__backend_\:inline_backend _init:}
+    \tl_set:Nx \:backend_write {@@__backend_\:inline_backend _write:n}
+    \tl_set:Nx \:backend_use {@@__backend_\:inline_backend _use:}
+
+    \@@__declare_inline_math_command:ccc {\:backend_init} {\:backend_write} {\:backend_use}
+}
+
+
+\cs_new_protected:Npn \@@__declare_inline_math_command:NNN #backend_init#backend_write#backend_use {
+    \catcode`$=\active
+    \def$##1${
+        #backend_init
+        #backend_write {\@@@@InternalSafeMathToggle}
+        \exp_args:NV \@@__apply_regex_replace_one_line:nnN \:current_config {##1} #backend_write
+        #backend_write {\@@@@InternalSafeMathToggle}
+        #backend_use
+    }
+}
+
+\cs_generate_variant:Nn \@@__declare_inline_math_command:NNN {ccc}
+
+\group_end:
+
+% use original inline math
+\cs_new_protected:Npn \@@__restore_inline_math: {
+    \catcode`$=3
+}
+
+
+\cs_new_protected:Npn \@@@@Enable {
+    \bool_if:NTF \:is_config_activated {
+        \msg_warning:nn {@@} {already-enabled}
+    } {
+        \:tl \:if_inline
+        \@@_config_get_inline:VN \:current_config \:if_inline
+    
+        \exp_args:NV \bool_if:nT \:if_inline {
+            % activate inline environment
+            \@@__modify_inline_math:
+        }
+
+        \:tl \:display_envs
+        \@@_config_get_display_envs:VN \:current_config \:display_envs
+        \clist_map_inline:Nn \:display_envs {
+            \@@__modify_display_math:n {##1}
+        }
+
+        \bool_gset_true:N \:is_config_activated
+    }
+
+}
+
+
+\cs_new_protected:Npn \@@@@Disable {
+    \bool_if:NTF \:is_config_activated {
+        \:tl \:if_inline
+        \@@_config_get_inline:VN \:current_config \:if_inline
+    
+        \exp_args:NV \bool_if:nT \:if_inline {
+            \@@__restore_inline_math:
+        }
+
+        \:tl \:display_envs
+        \@@_config_get_display_envs:VN \:current_config \:display_envs
+        \clist_map_inline:Nn \:display_envs {
+            \@@__restore_display_math:n {##1}
+        }
+
+        \bool_gset_false:N \:is_config_activated
+    } {
+        \msg_warning:nn {@@} {already-disabled}
+    }
+}
+
